@@ -1,4 +1,5 @@
-#define SERDBG 1
+#define SERDBG
+
 const uint8_t MELBUS_CLOCKBIT_INT = 1; // interrupt numer (INT1) on DDR3
 const uint8_t MELBUS_CLOCKBIT = 3; // Pin D3 - CLK
 const uint8_t MELBUS_DATA = 4; // Pin D4  - Data
@@ -33,7 +34,7 @@ void setup() {
   attachInterrupt(MELBUS_CLOCKBIT_INT, MELBUS_CLOCK_INTERRUPT, FALLING);
   // Set Clockpin-interrupt to input
   pinMode(MELBUS_CLOCKBIT, INPUT_PULLUP);
-#if def SERDBG
+#ifdef SERDBG
   // Initiate serial communication to debug via serial-usb (arduino)
   Serial.begin(230400);
   Serial.println("Initiating contact with Melbus:");
@@ -46,7 +47,7 @@ void setup() {
 void loop() {
   // Waiting for the clock interrupt to trigger 8 times to read one byte before
   // evaluating the data
-#if def SERDBG
+#ifdef SERDBG
   if (ByteIsRead) {
     // Reset bool to enable reading of next byte
     ByteIsRead=false;
@@ -113,7 +114,7 @@ void loop() {
     // Make sure we are in sync when reading the bits by resetting the clock
     // reader
 
-#if def SERDBG
+#ifdef SERDBG
     if (melbus_Bitposition != 0x80) {
       Serial.println(melbus_Bitposition,HEX);
       Serial.println("\n not in sync! ");
@@ -128,7 +129,7 @@ void loop() {
       PORTD |= (1<<MELBUS_DATA);
     }
   }
-#if def SERDBG
+#ifdef SERDBG
   if (Serial.available() > 0) {
     // read the incoming byte:
     incomingByte = Serial.read();
@@ -183,9 +184,11 @@ void MELBUS_CLOCK_INTERRUPT() {
   }
 
   if (PIND & (1<<MELBUS_DATA)) {
-    melbus_ReceivedByte |= melbus_Bitposition; // set bit nr [melbus_Bitposition] to "1"
+    // set bit nr [melbus_Bitposition] to "1"
+    melbus_ReceivedByte |= melbus_Bitposition;
   } else {
-    melbus_ReceivedByte &=~melbus_Bitposition; // set bit nr [melbus_Bitposition] to "0"
+    // set bit nr [melbus_Bitposition] to "0"
+    melbus_ReceivedByte &= ~melbus_Bitposition;
   }
 
   // if all the bits in the byte are read:
@@ -193,7 +196,7 @@ void MELBUS_CLOCK_INTERRUPT() {
 
     // Move every lastreadbyte one step down the array to keep track of former
     // bytes
-    for (int i=11;i>0;i--) {
+    for (int i=11; i>0; --i) {
       M[i] = M[i-1];
     }
 
@@ -208,7 +211,7 @@ void MELBUS_CLOCK_INTERRUPT() {
     ByteIsRead = true;
 
     // Reset bitcount to first bit in byte
-    melbus_Bitposition=0x80;
+    melbus_Bitposition = 0x80;
     if (M[2] == 0x07 && (M[1] == 0x1A || M[1] == 0x4A) && M[0] == 0xEE) {
       InitialSequence_ext = true;
     } else if (M[2] == 0x0 && (M[1] == 0x1C || M[1] == 0x4C) && M[0] == 0xED) {
@@ -239,18 +242,18 @@ void MELBUS_CLOCK_INTERRUPT() {
       melbus_SendBuffer[8]=0x08; // START
     } else if ((M[3] == 0xE8 || M[3] == 0xE9) && (M[2] == 0x1A || M[2] == 0x4A) && M[1] == 0x50 && M[0] == 0x01) {
       // D-
-      melbus_SendBuffer[3]--;
+      --melbus_SendBuffer[3];
       melbus_SendBuffer[5]=0x01;
     } else if ((M[3] == 0xE8 || M[3] == 0xE9) && (M[2] == 0x1A || M[2] == 0x4A) && M[1] == 0x50 && M[0] == 0x41) {
       // D+
-      melbus_SendBuffer[3]++;
+      ++melbus_SendBuffer[3];
       melbus_SendBuffer[5]=0x01;
     } else if ((M[4] == 0xE8 || M[4] == 0xE9) && (M[3] == 0x1B || M[3] == 0x4B) && M[2] == 0x2D && M[1] == 0x00 && M[0] == 0x01) {
       // T-
-      melbus_SendBuffer[5]--;
+      --melbus_SendBuffer[5];
     } else if ((M[4] == 0xE8 || M[4] == 0xE9) && (M[3] == 0x1B || M[3] == 0x4B) && M[2] == 0x2D && M[1] == 0x40 && M[0] == 0x01) {
       // T+
-      melbus_SendBuffer[5]++;
+      ++melbus_SendBuffer[5];
     } else if ((M[4] == 0xE8 || M[4] == 0xE9) && (M[3] == 0x1B || M[3] == 0x4B) && M[2] == 0xE0  && M[1] == 0x01 && M[0] == 0x08 ) {
       // Playinfo
       melbus_SendCnt=9;
