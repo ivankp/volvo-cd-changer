@@ -1,12 +1,27 @@
 #include <Arduino.h>
 void yield(void) { }
 
+#include <util/delay.h>
+#include <avr/interrupt.h>
+
+// #define PP_CAT_(A, B) A##B
+// #define PP_CAT(A, B) PP_CAT_(A,B)
+
+// using registed D
+#define OUT_0(bit) PORTD &= ~_BV(bit);
+#define OUT_1(bit) PORTD |=  _BV(bit);
+
+#define MODE_OUT(bit) DDRD |= _BV(bit);
+#define MODE_IN(bit) DDRD &= ~_BV(bit); OUT_0(bit)
+#define MODE_IN_UP(bit) DDRD &= ~_BV(bit); OUT_1(bit)
+#define READ(bit) (PIND & _BV(bit))
+
 #define SERDBG
 
-const uint8_t MELBUS_CLOCKBIT_INT = 1; // interrupt numer (INT1) on DDR3
-const uint8_t MELBUS_CLOCKBIT = 3; // Pin D3 - CLK
-const uint8_t MELBUS_DATA = 4; // Pin D4  - Data
-const uint8_t MELBUS_BUSY = 5; // Pin D5  - Busy
+#define MELBUS_CLOCKBIT_INT 1 // interrupt numer (INT1) on DDR3
+#define MELBUS_CLOCKBIT 3 // Pin D3 - CLK
+#define MELBUS_DATA 4 // Pin D4 - Data
+#define MELBUS_BUSY 5 // Pin D5 - Busy
 
 volatile uint8_t melbus_ReceivedByte = 0;
 volatile uint8_t melbus_CharBytes = 0;
@@ -18,7 +33,13 @@ volatile uint8_t melbus_DiscCnt = 0;
 volatile uint8_t melbus_Bitposition = 0x80;
 volatile uint8_t _M[12] = {0,0,0,0,0,0,0,0,0,0,0,0};
 
-#define M(i,x) (_M[i] == x)
+// #define M(i,x) (_M[i] == x)
+
+#define GET_MACRO(_1,_2,_3,NAME,...) NAME
+#define M(i,...) GET_MACRO(__VA_ARGS__, M_3, M_2, M_1)(i,__VA_ARGS__)
+#define M_1(i,x1) (_M[i] == x1)
+#define M_2(i,x1,x2) (M_1(i,x1) || M_1(i,x2))
+#define M_3(i,x1,x2,x3) (M_1(i,x1) || M_1(i,x2) || M_1(i,x3))
 
 volatile bool InitialSequence_ext = false;
 volatile bool ByteIsRead = false;
@@ -36,14 +57,13 @@ void MELBUS_CLOCK_INTERRUPT() {
 
   // Read status of Datapin and set status of current bit in recv_byte
   if (melbus_OutByte & melbus_Bitposition) {
-    DDRD &= (~(1<<MELBUS_DATA));
-    PORTD |= (1<<MELBUS_DATA);
+    MODE_IN_UP(MELBUS_DATA)
   } else { // if bit [i] is "0" - make databpin low
-    PORTD &= (~(1<<MELBUS_DATA));
-    DDRD |= (1<<MELBUS_DATA);
+    OUT_0(MELBUS_DATA)
+    MODE_OUT(MELBUS_DATA)
   }
 
-  if (PIND & (1<<MELBUS_DATA)) {
+  if (READ(MELBUS_DATA)) {
     // set bit nr [melbus_Bitposition] to "1"
     melbus_ReceivedByte |= melbus_Bitposition;
   } else {
@@ -72,49 +92,49 @@ void MELBUS_CLOCK_INTERRUPT() {
 
     // Reset bitcount to first bit in byte
     melbus_Bitposition = 0x80;
-    if (M(2,0x07) && (M(1,0x1A) || M(1,0x4A)) && M(0,0xEE)) {
+    if (M(2,0x07) && M(1,0x1A,0x4A) && M(0,0xEE)) {
       InitialSequence_ext = true;
-    } else if (M(2,0x0) && (M(1,0x1C) || M(1,0x4C)) && M(0,0xED)) {
+    } else if (M(2,0x0) && M(1,0x1C,0x4C) && M(0,0xED)) {
       InitialSequence_ext = true;
-    } else if ((M(0,0xE8) || M(0,0xE9)) && InitialSequence_ext) {
+    } else if (M(0,0xE8,0xE9) && InitialSequence_ext) {
       InitialSequence_ext = false;
 
       // Returning the expected byte to the HU, to confirm that the CD-CHGR is
       // present (0xEE)! see "ID Response"-table here
       // http://volvo.wot.lv/wiki/doku.php?id=melbus
       melbus_OutByte = 0xEE;
-    } else if ((M(2,0xE8) || M(2,0xE9)) && (M(1,0x1E) || M(1,0x4E)) && M(0,0xEF)) {
+    } else if (M(2,0xE8,0xE9) && M(1,0x1E,0x4E) && M(0,0xEF)) {
       // CartInfo
       melbus_DiscCnt=6;
-    } else if ((M(2,0xE8) || M(2,0xE9)) && (M(1,0x19) || M(1,0x49)) && M(0,0x22)) {
+    } else if (M(2,0xE8,0xE9) && M(1,0x19,0x49) && M(0,0x22)) {
       // Powerdown
       melbus_OutByte = 0x00; // respond to powerdown;
       melbus_SendBuffer[1]=0x02; // STOP
       melbus_SendBuffer[8]=0x02; // STOP
-    } else if ((M(2,0xE8) || M(2,0xE9)) && (M(1,0x19) || M(1,0x49)) && M(0,0x52)) {
+    } else if (M(2,0xE8,0xE9) && M(1,0x19,0x49) && M(0,0x52)) {
       // RND
-    } else if ((M(2,0xE8) || M(2,0xE9)) && (M(1,0x19) || M(1,0x49)) && M(0,0x29)) {
+    } else if (M(2,0xE8,0xE9) && M(1,0x19,0x49) && M(0,0x29)) {
       // FF
-    } else if ((M(2,0xE8) || M(2,0xE9)) && (M(1,0x19) || M(1,0x49)) && M(0,0x2F)) {
+    } else if (M(2,0xE8,0xE9) && M(1,0x19,0x49) && M(0,0x2F)) {
       // FR
       melbus_OutByte = 0x00; // respond to start;
       melbus_SendBuffer[1]=0x08; // START
       melbus_SendBuffer[8]=0x08; // START
-    } else if ((M(3,0xE8) || M(3,0xE9)) && (M(2,0x1A) || M(2,0x4A)) && M(1,0x50) && M(0,0x01)) {
+    } else if (M(3,0xE8,0xE9) && M(2,0x1A,0x4A) && M(1,0x50) && M(0,0x01)) {
       // D-
       --melbus_SendBuffer[3];
       melbus_SendBuffer[5] = 0x01;
-    } else if ((M(3,0xE8) || M(3,0xE9)) && (M(2,0x1A) || M(2,0x4A)) && M(1,0x50) && M(0,0x41)) {
+    } else if (M(3,0xE8,0xE9) && M(2,0x1A,0x4A) && M(1,0x50) && M(0,0x41)) {
       // D+
       ++melbus_SendBuffer[3];
       melbus_SendBuffer[5]=0x01;
-    } else if ((M(4,0xE8) || M(4,0xE9)) && (M(3,0x1B) || M(3,0x4B)) && M(2,0x2D) && M(1,0x00) && M(0,0x01)) {
+    } else if (M(4,0xE8,0xE9) && M(3,0x1B,0x4B) && M(2,0x2D) && M(1,0x00) && M(0,0x01)) {
       // T-
       --melbus_SendBuffer[5];
-    } else if ((M(4,0xE8) || M(4,0xE9)) && (M(3,0x1B) || M(3,0x4B)) && M(2,0x2D) && M(1,0x40) && M(0,0x01)) {
+    } else if (M(4,0xE8,0xE9) && M(3,0x1B,0x4B) && M(2,0x2D) && M(1,0x40) && M(0,0x01)) {
       // T+
       ++melbus_SendBuffer[5];
-    } else if ((M(4,0xE8) || M(4,0xE9)) && (M(3,0x1B) || M(3,0x4B)) && M(2,0xE0)  && M(1,0x01) && M(0,0x08) ) {
+    } else if (M(4,0xE8,0xE9) && M(3,0x1B,0x4B) && M(2,0xE0) && M(1,0x01) && M(0,0x08) ) {
       // Playinfo
       melbus_SendCnt=9;
     }
@@ -142,14 +162,14 @@ void melbus_Init_CDCHRG() {
 
   // Wait untill Busy-line goes high (not busy) before we pull BUSY low to
   // request init
-  while (digitalRead(MELBUS_BUSY)==LOW) { }
-  delayMicroseconds(10);
+  while (!READ(MELBUS_BUSY)) { }
+  _delay_us(10);
 
-  pinMode(MELBUS_BUSY, OUTPUT);
-  digitalWrite(MELBUS_BUSY, LOW);
-  delay(1200);
-  digitalWrite(MELBUS_BUSY, HIGH);
-  pinMode(MELBUS_BUSY, INPUT_PULLUP);
+  MODE_OUT(MELBUS_BUSY);
+  OUT_0(MELBUS_BUSY);
+  _delay_ms(1200);
+  OUT_1(MELBUS_BUSY);
+  MODE_IN_UP(MELBUS_BUSY);
 
   // Enable interrupt on INT1, quicker then:
   // attachInterrupt(MELBUS_CLOCKBIT_INT, MELBUS_CLOCK_INTERRUPT, RISING);
@@ -159,12 +179,12 @@ void melbus_Init_CDCHRG() {
 // Startup seequence
 void setup() {
   // Data is deafult input high
-  pinMode(MELBUS_DATA, INPUT_PULLUP);
+  MODE_IN_UP(MELBUS_DATA);
 
   // Activate interrupt on clock pin (INT1, D3)
   attachInterrupt(MELBUS_CLOCKBIT_INT, MELBUS_CLOCK_INTERRUPT, FALLING);
   // Set Clockpin-interrupt to input
-  pinMode(MELBUS_CLOCKBIT, INPUT_PULLUP);
+  MODE_IN_UP(MELBUS_CLOCKBIT);
 #ifdef SERDBG
   // Initiate serial communication to debug via serial-usb (arduino)
   Serial.begin(230400);
@@ -185,7 +205,7 @@ void loop() {
 
     if (incomingByte == ' ') {
       if ( M(11,0x0)
-        && (M(10,0x4A) || M(10,0x4C) || M(10,0x4E))
+        && M(10,0x4A,0x4C,0x4E)
         && M(9,0xEC)
         && M(8,0x57)
         && M(7,0x57)
@@ -231,7 +251,7 @@ void loop() {
 
       if (melbus_CharBytes) {
         Serial.write(_M[1]);
-        melbus_CharBytes--;
+        --melbus_CharBytes;
       } else {
         Serial.print(_M[1],HEX);
         Serial.write(' ');
@@ -241,7 +261,7 @@ void loop() {
 #endif
 
   // If BUSYPIN is HIGH => HU is in between transmissions
-  if (digitalRead(MELBUS_BUSY)==HIGH) {
+  if (READ(MELBUS_BUSY)) {
     // Make sure we are in sync when reading the bits by resetting the clock
     // reader
 
@@ -254,10 +274,9 @@ void loop() {
     if (incomingByte != 'k') {
       melbus_Bitposition = 0x80;
       melbus_OutByte = 0xFF;
-      melbus_SendCnt=0;
-      melbus_DiscCnt=0;
-      DDRD &= ~(1<<MELBUS_DATA);
-      PORTD |= (1<<MELBUS_DATA);
+      melbus_SendCnt = 0;
+      melbus_DiscCnt = 0;
+      MODE_IN_UP(MELBUS_DATA)
     }
   }
 #ifdef SERDBG
@@ -271,10 +290,9 @@ void loop() {
     incomingByte=0;
   }
 #endif
-  if ((melbus_Bitposition == 0x80) && (PIND & (1<<MELBUS_CLOCKBIT))) {
-    delayMicroseconds(7);
-    DDRD &= ~(1<<MELBUS_DATA);
-    PORTD |= (1<<MELBUS_DATA);
+  if ((melbus_Bitposition == 0x80) && READ(MELBUS_CLOCKBIT)) {
+    _delay_us(7);
+    MODE_IN_UP(MELBUS_DATA)
   }
 }
 
