@@ -42,14 +42,11 @@ volatile bool sending_byte = false;
 volatile bool melbus_MasterRequested = false;
 volatile bool melbus_MasterRequestAccepted = false;
 
-volatile bool testbool = false;
-volatile bool AllowInterruptRead = true;
 volatile int incomingByte = 0; // for incoming serial data
 
 // Global external interrupt that triggers when clock pin goes high after it
 // has been low for a short time => time to read datapin
 void MELBUS_CLOCK_INTERRUPT() {
-
   // Read status of Datapin and set status of current bit in recv_byte
   if (melbus_OutByte & melbus_Bitposition) {
     MODE_IN_UP(MELBUS_DATA)
@@ -104,8 +101,8 @@ void MELBUS_CLOCK_INTERRUPT() {
     } else if (M(2,0xE8,0xE9) && M(1,0x19,0x49) && M(0,0x22)) {
       // Powerdown
       melbus_OutByte = 0x00; // respond to powerdown;
-      melbus_SendBuffer[1]=0x02; // STOP
-      melbus_SendBuffer[8]=0x02; // STOP
+      melbus_SendBuffer[1] = 0x02; // STOP
+      melbus_SendBuffer[8] = 0x02; // STOP
     } else if (M(2,0xE8,0xE9) && M(1,0x19,0x49) && M(0,0x52)) {
       // RND
     } else if (M(2,0xE8,0xE9) && M(1,0x19,0x49) && M(0,0x29)) {
@@ -122,7 +119,7 @@ void MELBUS_CLOCK_INTERRUPT() {
     } else if (M(3,0xE8,0xE9) && M(2,0x1A,0x4A) && M(1,0x50) && M(0,0x41)) {
       // D+
       ++melbus_SendBuffer[3];
-      melbus_SendBuffer[5]=0x01;
+      melbus_SendBuffer[5] = 0x01;
     } else if (M(4,0xE8,0xE9) && M(3,0x1B,0x4B) && M(2,0x2D) && M(1,0x00) && M(0,0x01)) {
       // T-
       --melbus_SendBuffer[5];
@@ -171,26 +168,7 @@ void melbus_Init_CDCHRG() {
   EIMSK |= (1<<INT1);
 }
 
-// Startup seequence
-void setup() {
-  // Data is deafult input high
-  MODE_IN_UP(MELBUS_DATA);
-
-  // Activate interrupt on clock pin (INT1, D3)
-  attachInterrupt(MELBUS_CLOCKBIT_INT, MELBUS_CLOCK_INTERRUPT, FALLING);
-  // Set Clockpin-interrupt to input
-  MODE_IN_UP(MELBUS_CLOCKBIT);
-#ifdef SERDBG
-  // Initiate serial communication to debug via serial-usb (arduino)
-  Serial.begin(230400);
-  Serial.println("Initiating contact with Melbus:");
-#endif
-  // Call function that tells HU that we want to register a new device
-  melbus_Init_CDCHRG();
-}
-
-// Main loop
-void loop() {
+void loop() { // LOOP ===============================================
   // Waiting for the clock interrupt to trigger 8 times to read one byte before
   // evaluating the data
 #ifdef SERDBG
@@ -275,8 +253,7 @@ void loop() {
     }
   }
 #ifdef SERDBG
-  if (Serial.available() > 0) {
-    // read the incoming byte:
+  if (Serial.available() > 0) { // read the incoming byte
     incomingByte = Serial.read();
   }
   if (incomingByte == 'i') {
@@ -292,14 +269,24 @@ void loop() {
 }
 
 int main(void) {
-  // init();
+  // INIT ===========================================================
+  MODE_IN_UP(MELBUS_DATA); // Data is deafult input high
 
-  setup();
+  // Activate interrupt on clock pin (INT1, D3)
+  attachInterrupt(MELBUS_CLOCKBIT_INT, MELBUS_CLOCK_INTERRUPT, FALLING);
+  // Set Clockpin-interrupt to input
+  MODE_IN_UP(MELBUS_CLOCKBIT);
 
-  for (;;) {
-    loop();
-    if (serialEventRun) serialEventRun();
-  }
+#ifdef SERDBG
+  // Initiate serial communication to debug via serial-usb (arduino)
+  Serial.begin(230400);
+  Serial.println("Initiating contact with Melbus:");
+#endif
+  // Call function that tells HU that we want to register a new device
+  melbus_Init_CDCHRG();
+  // ================================================================
+
+  for (;;) loop();
 
   return 0;
 }
