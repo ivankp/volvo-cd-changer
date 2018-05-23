@@ -4,17 +4,16 @@ void yield(void) { }
 #include <util/delay.h>
 #include <avr/interrupt.h>
 
-// #define PP_CAT_(A, B) A##B
-// #define PP_CAT(A, B) PP_CAT_(A,B)
+#define PP_CAT(A,B) A##B
 
 // using registed D
-#define OUT_0(bit) PORTD &= ~_BV(bit);
-#define OUT_1(bit) PORTD |=  _BV(bit);
+#define OUT_0(bit) PORTD &= ~_BV(PP_CAT(PORTD,bit));
+#define OUT_1(bit) PORTD |=  _BV(PP_CAT(PORTD,bit));
 
-#define MODE_OUT(bit) DDRD |= _BV(bit);
-#define MODE_IN(bit) DDRD &= ~_BV(bit); OUT_0(bit)
-#define MODE_IN_UP(bit) DDRD &= ~_BV(bit); OUT_1(bit)
-#define READ(bit) (PIND & _BV(bit))
+#define MODE_OUT(bit) DDRD |= _BV(PP_CAT(DDD,bit));
+#define MODE_IN(bit) DDRD &= ~_BV(PP_CAT(DDD,bit)); OUT_0(bit)
+#define MODE_IN_UP(bit) DDRD &= ~_BV(PP_CAT(DDD,bit)); OUT_1(bit)
+#define READ(bit) (PIND & _BV(PP_CAT(PIND,bit)))
 
 #define SERDBG
 
@@ -32,8 +31,6 @@ volatile uint8_t melbus_DiscBuffer[6] = {0x00,0xFC,0xFF,0x4A,0xFC,0xFF};
 volatile uint8_t melbus_DiscCnt = 0;
 volatile uint8_t melbus_Bitposition = 0x80;
 volatile uint8_t _M[12] = {0,0,0,0,0,0,0,0,0,0,0,0};
-
-// #define M(i,x) (_M[i] == x)
 
 #define GET_MACRO(_1,_2,_3,NAME,...) NAME
 #define M(i,...) GET_MACRO(__VA_ARGS__, M_3, M_2, M_1)(i,__VA_ARGS__)
@@ -118,8 +115,8 @@ void MELBUS_CLOCK_INTERRUPT() {
     } else if (M(2,0xE8,0xE9) && M(1,0x19,0x49) && M(0,0x2F)) {
       // FR
       melbus_OutByte = 0x00; // respond to start;
-      melbus_SendBuffer[1]=0x08; // START
-      melbus_SendBuffer[8]=0x08; // START
+      melbus_SendBuffer[1] = 0x08; // START
+      melbus_SendBuffer[8] = 0x08; // START
     } else if (M(3,0xE8,0xE9) && M(2,0x1A,0x4A) && M(1,0x50) && M(0,0x01)) {
       // D-
       --melbus_SendBuffer[3];
@@ -134,7 +131,7 @@ void MELBUS_CLOCK_INTERRUPT() {
     } else if (M(4,0xE8,0xE9) && M(3,0x1B,0x4B) && M(2,0x2D) && M(1,0x40) && M(0,0x01)) {
       // T+
       ++melbus_SendBuffer[5];
-    } else if (M(4,0xE8,0xE9) && M(3,0x1B,0x4B) && M(2,0xE0) && M(1,0x01) && M(0,0x08) ) {
+    } else if (M(4,0xE8,0xE9) && M(3,0x1B,0x4B) && M(2,0xE0) && M(1,0x01) && M(0,0x08)) {
       // Playinfo
       melbus_SendCnt=9;
     }
