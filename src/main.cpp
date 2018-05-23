@@ -4,16 +4,14 @@ void yield(void) { }
 #include <util/delay.h>
 #include <avr/interrupt.h>
 
-#define PP_CAT(A,B) A##B
-
 // using registed D
-#define OUT_0(bit) PORTD &= ~_BV(PP_CAT(PORTD,bit));
-#define OUT_1(bit) PORTD |=  _BV(PP_CAT(PORTD,bit));
+#define OUT_0(bit) PORTD &= ~_BV(bit);
+#define OUT_1(bit) PORTD |=  _BV(bit);
 
-#define MODE_OUT(bit) DDRD |= _BV(PP_CAT(DDD,bit));
-#define MODE_IN(bit) DDRD &= ~_BV(PP_CAT(DDD,bit)); OUT_0(bit)
-#define MODE_IN_UP(bit) DDRD &= ~_BV(PP_CAT(DDD,bit)); OUT_1(bit)
-#define READ(bit) (PIND & _BV(PP_CAT(PIND,bit)))
+#define MODE_OUT(bit) DDRD |= _BV(bit);
+#define MODE_IN(bit) DDRD &= ~_BV(bit); OUT_0(bit)
+#define MODE_IN_UP(bit) DDRD &= ~_BV(bit); OUT_1(bit)
+#define READ(bit) (PIND & _BV(bit))
 
 #define SERDBG
 
