@@ -4,7 +4,7 @@ void yield(void) { }
 #include <util/delay.h>
 #include <avr/interrupt.h>
 
-// using registed D
+// using register D
 #define OUT_0(bit) PORTD &= ~_BV(bit);
 #define OUT_1(bit) PORTD |=  _BV(bit);
 
@@ -128,7 +128,7 @@ void MELBUS_CLOCK_INTERRUPT() {
       ++melbus_SendBuffer[5];
     } else if (M(4,0xE8,0xE9) && M(3,0x1B,0x4B) && M(2,0xE0) && M(1,0x01) && M(0,0x08)) {
       // Playinfo
-      melbus_SendCnt=9;
+      melbus_SendCnt = 9;
     }
 
     if (melbus_SendCnt) {
@@ -152,7 +152,7 @@ void melbus_Init_CDCHRG() {
   // detachInterrupt(MELBUS_CLOCKBIT_INT);
   EIMSK &= ~(1<<INT1);
 
-  // Wait untill Busy-line goes high (not busy) before we pull BUSY low to
+  // Wait until Busy-line goes high (not busy) before we pull BUSY low to
   // request init
   while (!READ(MELBUS_BUSY)) { }
   _delay_us(10);
