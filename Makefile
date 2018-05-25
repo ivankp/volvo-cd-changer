@@ -33,7 +33,6 @@ endif
 -include $(DEPS)
 
 .build/main.elf: \
-  $(ARDUINO)/cores/arduino/WInterrupts.c \
   $(ARDUINO)/cores/arduino/HardwareSerial0.cpp \
   $(ARDUINO)/cores/arduino/HardwareSerial.cpp \
   $(ARDUINO)/cores/arduino/Print.cpp

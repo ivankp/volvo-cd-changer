@@ -4,6 +4,8 @@ void yield(void) { }
 #include <util/delay.h>
 #include <avr/interrupt.h>
 
+#define SERDBG
+
 // using register D
 #define OUT_0(bit) PORTD &= ~_BV(bit);
 #define OUT_1(bit) PORTD |=  _BV(bit);
@@ -13,12 +15,10 @@ void yield(void) { }
 #define MODE_IN_UP(bit) DDRD &= ~_BV(bit); OUT_1(bit)
 #define READ(bit) (PIND & _BV(bit))
 
-#define SERDBG
-
-#define MELBUS_CLOCKBIT_INT 1 // interrupt numer (INT1) on DDR3
-#define MELBUS_CLOCKBIT 3 // Pin D3 - CLK
+#define MELBUS_CLK  3 // Pin D3 - CLK
 #define MELBUS_DATA 4 // Pin D4 - Data
 #define MELBUS_BUSY 5 // Pin D5 - Busy
+#define MELBUS_INT INT1 // interrupt number on D3
 
 volatile uint8_t melbus_ReceivedByte = 0;
 volatile uint8_t melbus_CharBytes = 0;
@@ -46,7 +46,7 @@ volatile int incomingByte = 0; // for incoming serial data
 
 // Global external interrupt that triggers when clock pin goes high after it
 // has been low for a short time => time to read datapin
-void MELBUS_CLOCK_INTERRUPT() {
+ISR( INT1_vect ) {
   // Read status of Datapin and set status of current bit in recv_byte
   if (melbus_OutByte & melbus_Bitposition) {
     MODE_IN_UP(MELBUS_DATA)
@@ -65,7 +65,6 @@ void MELBUS_CLOCK_INTERRUPT() {
 
   // if all the bits in the byte are read:
   if (melbus_Bitposition==0x01) {
-
     // Move every lastreadbyte one step down the array to keep track of former
     // bytes
     for (int i=11; i>0; --i) {
@@ -97,7 +96,7 @@ void MELBUS_CLOCK_INTERRUPT() {
       melbus_OutByte = 0xEE;
     } else if (M(2,0xE8,0xE9) && M(1,0x1E,0x4E) && M(0,0xEF)) {
       // CartInfo
-      melbus_DiscCnt=6;
+      melbus_DiscCnt = 6;
     } else if (M(2,0xE8,0xE9) && M(1,0x19,0x49) && M(0,0x22)) {
       // Powerdown
       melbus_OutByte = 0x00; // respond to powerdown;
@@ -142,15 +141,12 @@ void MELBUS_CLOCK_INTERRUPT() {
     // set bitnumber to address of next bit in byte
     melbus_Bitposition >>= 1;
   }
-  EIFR |= (1 << INTF1);
 }
 
 // Notify HU that we want to trigger the first initiate procedure to add a new
 // device (CD-CHGR) by pulling BUSY line low for 1s
-void melbus_Init_CDCHRG() {
-  // Disabel interrupt on INT1 quicker then:
-  // detachInterrupt(MELBUS_CLOCKBIT_INT);
-  EIMSK &= ~(1<<INT1);
+void melbus_init_CDCHRG() {
+  EIMSK &= ~(1 << MELBUS_INT); // Disabel interrupt
 
   // Wait until Busy-line goes high (not busy) before we pull BUSY low to
   // request init
@@ -163,14 +159,12 @@ void melbus_Init_CDCHRG() {
   OUT_1(MELBUS_BUSY);
   MODE_IN_UP(MELBUS_BUSY);
 
-  // Enable interrupt on INT1, quicker then:
-  // attachInterrupt(MELBUS_CLOCKBIT_INT, MELBUS_CLOCK_INTERRUPT, RISING);
-  EIMSK |= (1<<INT1);
+  EIMSK |= (1 << MELBUS_INT); // Enable interrupt
 }
 
 void loop() { // LOOP ===============================================
-  // Waiting for the clock interrupt to trigger 8 times to read one byte before
-  // evaluating the data
+  // Waiting for the clock interrupt to trigger 8 times to read one byte
+  // before evaluating the data
 #ifdef SERDBG
   if (ByteIsRead) {
     // Reset bool to enable reading of next byte
@@ -237,7 +231,6 @@ void loop() { // LOOP ===============================================
   if (READ(MELBUS_BUSY)) {
     // Make sure we are in sync when reading the bits by resetting the clock
     // reader
-
 #ifdef SERDBG
     if (melbus_Bitposition != 0x80) {
       Serial.println(melbus_Bitposition,HEX);
@@ -257,12 +250,12 @@ void loop() { // LOOP ===============================================
     incomingByte = Serial.read();
   }
   if (incomingByte == 'i') {
-    melbus_Init_CDCHRG();
+    melbus_init_CDCHRG();
     Serial.println("\n forced init: ");
-    incomingByte=0;
+    incomingByte = 0;
   }
 #endif
-  if ((melbus_Bitposition == 0x80) && READ(MELBUS_CLOCKBIT)) {
+  if ((melbus_Bitposition == 0x80) && READ(MELBUS_CLK)) {
     _delay_us(7);
     MODE_IN_UP(MELBUS_DATA)
   }
@@ -270,20 +263,25 @@ void loop() { // LOOP ===============================================
 
 int main(void) {
   // INIT ===========================================================
-  MODE_IN_UP(MELBUS_DATA); // Data is deafult input high
-
-  // Activate interrupt on clock pin (INT1, D3)
-  attachInterrupt(MELBUS_CLOCKBIT_INT, MELBUS_CLOCK_INTERRUPT, FALLING);
-  // Set Clockpin-interrupt to input
-  MODE_IN_UP(MELBUS_CLOCKBIT);
+  cli(); // Disable global interrupts
 
 #ifdef SERDBG
   // Initiate serial communication to debug via serial-usb (arduino)
   Serial.begin(230400);
   Serial.println("Initiating contact with Melbus:");
 #endif
+
+  MODE_IN_UP(MELBUS_CLK); // start with all melbus pins as inputs
+  MODE_IN_UP(MELBUS_DATA);
+  MODE_IN_UP(MELBUS_BUSY);
+
+  EIMSK |= ( 1 << MELBUS_INT ); // Enable interrupt
+  EICRA |= ( 1 << ISC11 ); // Falling edge
+
   // Call function that tells HU that we want to register a new device
-  melbus_Init_CDCHRG();
+  melbus_init_CDCHRG();
+
+  sei(); // Enable global interrupts
   // ================================================================
 
   for (;;) loop();
