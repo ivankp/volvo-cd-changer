@@ -1,18 +1,22 @@
-#include <Arduino.h>
-void yield(void) { }
-
+#include <stdbool.h>
 #include <util/delay.h>
 #include <avr/interrupt.h>
 
 #define SERDBG
+
+#ifdef SERDBG
+#include <stdio.h>
+#include "uart.h"
+#endif
 
 // using register D
 #define OUT_0(bit) PORTD &= ~_BV(bit);
 #define OUT_1(bit) PORTD |=  _BV(bit);
 
 #define MODE_OUT(bit) DDRD |= _BV(bit);
-#define MODE_IN(bit) DDRD &= ~_BV(bit); OUT_0(bit)
-#define MODE_IN_UP(bit) DDRD &= ~_BV(bit); OUT_1(bit)
+#define MODE_IN(bit) DDRD &= ~_BV(bit);
+#define MODE_IN_U(bit) MODE_IN(bit) OUT_1(bit)
+#define MODE_IN_D(bit) MODE_IN(bit) OUT_0(bit)
 #define READ(bit) (PIND & _BV(bit))
 
 #define MELBUS_CLK  3 // Pin D3 - CLK
@@ -49,7 +53,7 @@ volatile int incomingByte = 0; // for incoming serial data
 ISR( INT1_vect ) {
   // Read status of Datapin and set status of current bit in recv_byte
   if (melbus_OutByte & melbus_Bitposition) {
-    MODE_IN_UP(MELBUS_DATA)
+    MODE_IN_U(MELBUS_DATA)
   } else { // if bit [i] is "0" - make databpin low
     OUT_0(MELBUS_DATA)
     MODE_OUT(MELBUS_DATA)
@@ -157,7 +161,7 @@ void melbus_init_CDCHRG() {
   OUT_0(MELBUS_BUSY);
   _delay_ms(1200);
   OUT_1(MELBUS_BUSY);
-  MODE_IN_UP(MELBUS_BUSY);
+  MODE_IN_U(MELBUS_BUSY);
 
   EIMSK |= (1 << MELBUS_INT); // Enable interrupt
 }
@@ -186,42 +190,41 @@ void loop() { // LOOP ===============================================
       }
 
       if (M(1,0x0) && M(0,0x4A))
-        Serial.println("\n LCD is master: (no CD init)");
+        puts("\n LCD is master: (no CD init)\n");
       else if (M(1,0x0) && M(0,0x4C))
-        Serial.println("\n LCD is master: (\?\?\?)");
+        puts("\n LCD is master: (\?\?\?)\n");
       else if (M(1,0x0) && M(0,0x4E))
-        Serial.println("\n LCD is master: (with CD init)");
+        puts("\n LCD is master: (with CD init)\n");
       else if (M(1,0x80) && M(0,0x4E))
-        Serial.println("\n ???");
+        puts("\n ???\n");
       else if (M(1,0xE8) && M(0,0x4E))
-        Serial.println("\n ???");
+        puts("\n ???\n");
       else if (M(1,0xF9) && M(0,0x49))
-        Serial.println("\n HU  is master: ");
+        puts("\n HU  is master: \n");
       else if (M(1,0x80) && M(0,0x49))
-        Serial.println("\n HU  is master: ");
+        puts("\n HU  is master: \n");
       else if (M(1,0xE8) && M(0,0x49))
-        Serial.println("\n HU  is master: ");
+        puts("\n HU  is master: \n");
       else if (M(1,0xE9) && M(0,0x4B))
-        Serial.println("\n HU  is master: -> CDC");
+        puts("\n HU  is master: -> CDC\n");
       else if (M(1,0x81) && M(0,0x4B))
-        Serial.println("\n HU  is master: -> CDP");
+        puts("\n HU  is master: -> CDP\n");
       else if (M(1,0xF9) && M(0,0x4E))
-        Serial.println("\n HU  is master: ");
+        puts("\n HU  is master: \n");
       else if (M(1,0x50) && M(0,0x4E))
-        Serial.println("\n HU  is master: ");
+        puts("\n HU  is master: \n");
       else if (M(1,0x50) && M(0,0x4C))
-        Serial.println("\n HU  is master: ");
+        puts("\n HU  is master: \n");
       else if (M(1,0x50) && M(0,0x4A))
-        Serial.println("\n HU  is master: ");
+        puts("\n HU  is master: \n");
       else if (M(1,0xF8) && M(0,0x4C))
-        Serial.println("\n HU  is master: ");
+        puts("\n HU  is master: \n");
 
       if (melbus_CharBytes) {
-        Serial.write(_M[1]);
+        putchar(_M[1]);
         --melbus_CharBytes;
       } else {
-        Serial.print(_M[1],HEX);
-        Serial.write(' ');
+        printf("0x%02x ", _M[1]);
       }
     }
   }
@@ -233,8 +236,7 @@ void loop() { // LOOP ===============================================
     // reader
 #ifdef SERDBG
     if (melbus_Bitposition != 0x80) {
-      Serial.println(melbus_Bitposition,HEX);
-      Serial.println("\n not in sync! ");
+      printf("0x%02x\nnot in sync!\n",melbus_Bitposition);
     }
 #endif
     if (incomingByte != 'k') {
@@ -242,22 +244,22 @@ void loop() { // LOOP ===============================================
       melbus_OutByte = 0xFF;
       melbus_SendCnt = 0;
       melbus_DiscCnt = 0;
-      MODE_IN_UP(MELBUS_DATA)
+      MODE_IN_U(MELBUS_DATA)
     }
   }
 #ifdef SERDBG
-  if (Serial.available() > 0) { // read the incoming byte
-    incomingByte = Serial.read();
+  if (UART_RECEIVED) { // read the incoming byte
+    incomingByte = UDR0;
   }
   if (incomingByte == 'i') {
     melbus_init_CDCHRG();
-    Serial.println("\n forced init: ");
+    puts("\nforced init: \n");
     incomingByte = 0;
   }
 #endif
   if ((melbus_Bitposition == 0x80) && READ(MELBUS_CLK)) {
     _delay_us(7);
-    MODE_IN_UP(MELBUS_DATA)
+    MODE_IN_U(MELBUS_DATA)
   }
 }
 
@@ -266,14 +268,13 @@ int main(void) {
   cli(); // Disable global interrupts
 
 #ifdef SERDBG
-  // Initiate serial communication to debug via serial-usb (arduino)
-  Serial.begin(230400);
-  Serial.println("Initiating contact with Melbus:");
+  uart_init(); // Initiate serial communication to debug via serial-usb
+  puts("Initiating contact with Melbus:\n");
 #endif
 
-  MODE_IN_UP(MELBUS_CLK); // start with all melbus pins as inputs
-  MODE_IN_UP(MELBUS_DATA);
-  MODE_IN_UP(MELBUS_BUSY);
+  MODE_IN_U(MELBUS_CLK); // start with all melbus pins as inputs
+  MODE_IN_U(MELBUS_DATA);
+  MODE_IN_U(MELBUS_BUSY);
 
   EIMSK |= ( 1 << MELBUS_INT ); // Enable interrupt
   EICRA |= ( 1 << ISC11 ); // Falling edge
